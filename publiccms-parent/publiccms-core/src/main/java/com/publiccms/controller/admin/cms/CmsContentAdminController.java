@@ -16,6 +16,7 @@ import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.publiccms.logic.service.sys.SysUserService;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
@@ -653,11 +654,17 @@ public class CmsContentAdminController {
      */
     @RequestMapping("exportExcel")
     @Csrf
-    public ExcelView exportExcel(@RequestAttribute SysSite site, CmsContentQuery queryEntity, String orderField, String orderType,
+    public ExcelView exportExcel(@RequestAttribute SysSite site, @SessionAttribute SysUser admin,
+                                 CmsContentQuery queryEntity, String orderField, String orderType,
             HttpServletRequest request) {
         queryEntity.setSiteId(site.getId());
         queryEntity.setDisabled(false);
         queryEntity.setEmptyParent(true);
+        if (SysUserService.CONTENT_PERMISSIONS_SELF == admin.getContentPermissions()) {
+            queryEntity.setUserId(admin.getId());
+        } else if (SysUserService.CONTENT_PERMISSIONS_DEPT == admin.getContentPermissions()) {
+            //queryEntity.setDeptId(admin.getDeptId());
+        }
         Locale locale = RequestContextUtils.getLocale(request);
         return exchangeComponent.exportExcelByQuery(site.getId(), queryEntity, orderField, orderType, locale);
     }

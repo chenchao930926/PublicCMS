@@ -108,7 +108,7 @@ public class ContentExchangeComponent extends Exchange<CmsContent, Content> {
 
     public ExcelView exportExcelByQuery(short siteId, CmsContentQuery queryEntity, String orderField, String orderType,
             Locale locale) {
-        PageHandler page = service.getPage(queryEntity, null, orderField, orderType, null, 1, PageHandler.MAX_PAGE_SIZE, null);
+        PageHandler page = service.getPage(queryEntity, true, orderField, orderType, null, 1, PageHandler.MAX_PAGE_SIZE, null);
         @SuppressWarnings("unchecked")
         List<CmsContent> entityList = (List<CmsContent>) page.getList();
         Map<String, List<Serializable>> pksMap = new HashMap<>();
