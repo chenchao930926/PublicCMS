@@ -5,18 +5,15 @@ import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.text.DateFormat;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.publiccms.entities.req.ManualSaveContent;
 import com.publiccms.logic.service.sys.SysUserService;
+import com.publiccms.views.pojo.entities.ExtendData;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
@@ -25,10 +22,7 @@ import org.apache.tools.zip.ZipOutputStream;
 import javax.annotation.Resource;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.RequestAttribute;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.SessionAttribute;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.RequestContextUtils;
 
@@ -113,12 +107,92 @@ public class CmsContentAdminController {
     private SysSiteService siteService;
     @Resource
     private ContentExchangeComponent exchangeComponent;
+    @Resource
+    private SysUserService sysUserService;
 
     public static final String[] ignoreProperties = new String[] { "siteId", "userId", "deptId", "categoryId", "tagIds", "sort",
             "createDate", "updateDate", "clicks", "comments", "scores", "scoreUsers", "score", "childs", "checkUserId",
             "disabled" };
 
     public static final String[] ignorePropertiesWithUrl = ArrayUtils.addAll(ignoreProperties, new String[] { "url" });
+
+    public static final String TOKEN = "fc68e887d08dfb97";
+    @RequestMapping(value = "/manualSave")
+    @ResponseBody
+    public String manualSave(HttpServletRequest request, ManualSaveContent params) {
+        // categoryId, modelId, parentId, title, author, stype, wform, product, text
+        //uat添加都是空的字段: quoteCategoryId, categoryName, source, sourceUrl, publishDate, expiryDate, cover
+        Map<String, String> ret = new HashMap<>();
+        log.info("params=" + JsonUtils.getString(params));
+        if (!TOKEN.equals(params.getToken())) {
+            log.info("token valid fail." + params.getToken());
+            ret.put("status", "-2");
+            return JsonUtils.getString(ret);
+        }
+        SysSite site = siteService.getEntity(params.getSiteId());
+        SysUser admin = sysUserService.getEntity(params.getUserId());
+        CmsCategory category = categoryService.getEntity(params.getCategoryId());
+        if (null != category && site.getId() != category.getSiteId()) {
+            category = null;
+        }
+        CmsContent entity = new CmsContent();
+        entity.setAuthor(params.getAuthor());
+        entity.setCategoryId(params.getCategoryId());
+        entity.setModelId(params.getModelId());
+        entity.setParentId(params.getParentId());
+        entity.setQuoteContentId(params.getQuoteCategoryId());
+        entity.setPublishDate(params.getPublishDate());
+        entity.setExpiryDate(params.getExpiryDate());
+        entity.setCover(params.getCover());
+
+        CmsContentAttribute attribute = new CmsContentAttribute();
+        attribute.setSource(params.getSource());
+        attribute.setSourceUrl(params.getSourceUrl());
+        attribute.setText(params.getText());
+
+        CmsContentParameters contentParameters = new CmsContentParameters();
+        List<ExtendData> modelExtendDataList = new ArrayList<>();
+        modelExtendDataList.add(new ExtendData("stype", params.getStype()));
+        modelExtendDataList.add(new ExtendData("wform", params.getWform()));
+        modelExtendDataList.add(new ExtendData("product", params.getProduct()));
+        contentParameters.setModelExtendDataList(modelExtendDataList);
+
+        CmsModel cmsModel = modelComponent.getModelMap(site.getId()).get(entity.getModelId());
+        CmsCategoryModel categoryModel = categoryModelService.getEntity(new CmsCategoryModelId(entity.getCategoryId(), entity.getModelId()));
+        Date now = CommonUtils.getDate();
+        initContent(entity, site, cmsModel, null, null, attribute, Boolean.TRUE, now);
+        CmsContent parent = service.getEntity(entity.getParentId());
+        if (null != parent) {
+            entity.setQuoteContentId(null == parent.getParentId() ? parent.getId() : parent.getQuoteContentId());
+        }
+        service.save(site.getId(), admin, entity);
+        log.info("save entity success");
+        if (CommonUtils.notEmpty(entity.getParentId())) {
+            service.updateChilds(entity.getParentId(), 1);
+        }
+        logOperateService.save(new LogOperate(site.getId(), admin.getId(), admin.getDeptId(),
+                LogLoginService.CHANNEL_WEB_MANAGER, "save.content", RequestUtils.getIpAddress(request), now,
+                JsonUtils.getString(new Object[] { entity, attribute, contentParameters })));
+
+        entity = service.saveTagAndAttribute(site, admin.getId(), entity.getId(), contentParameters, cmsModel,
+                category != null ? category.getExtendId() : null, attribute);
+        try {
+            templateComponent.createContentFile(site, entity, category, categoryModel); // 静态化
+            if (null == entity.getParentId() && null == entity.getQuoteContentId()) {
+                //Set<Serializable> categoryIdsSet = service.updateQuote(entity.getId(), contentParameters);
+                if (CommonUtils.notEmpty(contentParameters.getCategoryIds())) {
+                    List<CmsCategory> categoryList = categoryService.getEntitys(contentParameters.getCategoryIds().toArray(new Integer[0]));
+                    service.saveQuote(entity.getId(), categoryList, category);
+                }
+            }
+            ret.put("status", "0");
+        } catch (IOException | TemplateException e) {
+            log.error(e.getMessage(), e);
+            ret.put("status", "-1");
+            ret.put("errorMsg", e.getMessage());
+        }
+        return JsonUtils.getString(ret);
+    }
 
     /**
      * 保存内容
@@ -139,6 +213,7 @@ public class CmsContentAdminController {
     public String save(@RequestAttribute SysSite site, @SessionAttribute SysUser admin, CmsContent entity,
             CmsContentAttribute attribute, @ModelAttribute CmsContentParameters contentParameters, Boolean draft, Boolean checked,
             HttpServletRequest request, ModelMap model) {
+        log.info("title=" + entity.getTitle());
         SysDept dept = sysDeptService.getEntity(admin.getDeptId());
         if (ControllerUtils.errorNotEmpty("deptId", admin.getDeptId(), model)
                 || ControllerUtils.errorNotEmpty("deptId", dept, model)
@@ -152,11 +227,9 @@ public class CmsContentAdminController {
         if (null != category && site.getId() != category.getSiteId()) {
             category = null;
         }
-
         CmsModel cmsModel = modelComponent.getModelMap(site.getId()).get(entity.getModelId());
         CmsCategoryModel categoryModel = categoryModelService
                 .getEntity(new CmsCategoryModelId(entity.getCategoryId(), entity.getModelId()));
-
         if (ControllerUtils.errorNotEmpty("category", category, model) || ControllerUtils.errorNotEmpty("model", cmsModel, model)
                 || ControllerUtils.errorNotEmpty("categoryModel", categoryModel, model)) {
             return CommonConstants.TEMPLATE_ERROR;
