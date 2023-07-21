@@ -15,8 +15,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
+import com.publiccms.common.tools.*;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.BeanUtils;
 import javax.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -27,11 +30,6 @@ import com.publiccms.common.base.BaseService;
 import com.publiccms.common.constants.CommonConstants;
 import com.publiccms.common.handler.FacetPageHandler;
 import com.publiccms.common.handler.PageHandler;
-import com.publiccms.common.tools.CmsFileUtils;
-import com.publiccms.common.tools.CommonUtils;
-import com.publiccms.common.tools.ControllerUtils;
-import com.publiccms.common.tools.ExtendUtils;
-import com.publiccms.common.tools.HtmlUtils;
 import com.publiccms.entities.cms.CmsCategory;
 import com.publiccms.entities.cms.CmsContent;
 import com.publiccms.entities.cms.CmsContentAttribute;
@@ -58,6 +56,7 @@ import com.publiccms.views.pojo.query.CmsContentSearchQuery;
 @Service
 @Transactional
 public class CmsContentService extends BaseService<CmsContent> {
+    protected final Log log = LogFactory.getLog(getClass());
     private static String[] DICTIONARY_INPUT_TYPES = { Config.INPUTTYPE_NUMBER, Config.INPUTTYPE_BOOLEAN, Config.INPUTTYPE_USER,
             Config.INPUTTYPE_DEPT, Config.INPUTTYPE_CONTENT, Config.INPUTTYPE_CATEGORY, Config.INPUTTYPE_DICTIONARY,
             Config.INPUTTYPE_CATEGORYTYPE, Config.INPUTTYPE_TAGTYPE };
@@ -117,6 +116,7 @@ public class CmsContentService extends BaseService<CmsContent> {
     public PageHandler query(CmsContentSearchQuery queryEntity, Boolean containChild, String orderField, Integer pageIndex,
             Integer pageSize, Integer maxResults) {
         queryEntity.setCategoryIds(getCategoryIds(containChild, queryEntity.getCategoryId(), queryEntity.getCategoryIds()));
+        log.info("CmsContentSearchQuery=" + JsonUtils.getString(queryEntity));
         return dao.query(queryEntity, orderField, pageIndex, pageSize, maxResults);
     }
 
@@ -605,6 +605,7 @@ public class CmsContentService extends BaseService<CmsContent> {
         entity.setSiteId(siteId);
         entity.setUserId(user.getId());
         entity.setDeptId(user.getDeptId());
+        log.info("save cmsContent=" + JsonUtils.getString(entity));
         save(entity);
     }
 

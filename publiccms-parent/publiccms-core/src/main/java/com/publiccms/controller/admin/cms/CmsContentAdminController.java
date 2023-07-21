@@ -136,6 +136,7 @@ public class CmsContentAdminController {
             category = null;
         }
         CmsContent entity = new CmsContent();
+        entity.setTitle(params.getTitle());
         entity.setAuthor(params.getAuthor());
         entity.setCategoryId(params.getCategoryId());
         entity.setModelId(params.getModelId());
@@ -176,8 +177,10 @@ public class CmsContentAdminController {
 
         entity = service.saveTagAndAttribute(site, admin.getId(), entity.getId(), contentParameters, cmsModel,
                 category != null ? category.getExtendId() : null, attribute);
+        log.info("saveTagAndAttribute success");
         try {
             templateComponent.createContentFile(site, entity, category, categoryModel); // 静态化
+            log.info("createContentFile success." + (null == entity.getParentId() && null == entity.getQuoteContentId()));
             if (null == entity.getParentId() && null == entity.getQuoteContentId()) {
                 //Set<Serializable> categoryIdsSet = service.updateQuote(entity.getId(), contentParameters);
                 if (CommonUtils.notEmpty(contentParameters.getCategoryIds())) {
@@ -191,6 +194,7 @@ public class CmsContentAdminController {
             ret.put("status", "-1");
             ret.put("errorMsg", e.getMessage());
         }
+        log.info("ret=" + JsonUtils.getString(ret));
         return JsonUtils.getString(ret);
     }
 
