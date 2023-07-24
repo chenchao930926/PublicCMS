@@ -11,9 +11,13 @@ import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.publiccms.entities.log.LogUpload;
 import com.publiccms.entities.req.ManualSaveContent;
+import com.publiccms.logic.component.site.LockComponent;
+import com.publiccms.logic.service.log.LogUploadService;
 import com.publiccms.logic.service.sys.SysUserService;
 import com.publiccms.views.pojo.entities.ExtendData;
+import com.publiccms.views.pojo.entities.FileSize;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
@@ -109,6 +113,12 @@ public class CmsContentAdminController {
     private ContentExchangeComponent exchangeComponent;
     @Resource
     private SysUserService sysUserService;
+    @Resource
+    private LockComponent lockComponent;
+    @Resource
+    protected SiteConfigComponent siteConfigComponent;
+    @Resource
+    protected LogUploadService logUploadService;
 
     public static final String[] ignoreProperties = new String[] { "siteId", "userId", "deptId", "categoryId", "tagIds", "sort",
             "createDate", "updateDate", "clicks", "comments", "scores", "scoreUsers", "score", "childs", "checkUserId",
@@ -161,12 +171,16 @@ public class CmsContentAdminController {
         CmsModel cmsModel = modelComponent.getModelMap(site.getId()).get(entity.getModelId());
         CmsCategoryModel categoryModel = categoryModelService.getEntity(new CmsCategoryModelId(entity.getCategoryId(), entity.getModelId()));
         Date now = CommonUtils.getDate();
-        initContent(entity, site, cmsModel, null, null, attribute, Boolean.TRUE, now);
+        Boolean checked = params.getChecked();
+        initContent(entity, site, cmsModel, null, checked, attribute, Boolean.TRUE, now);
         CmsContent parent = service.getEntity(entity.getParentId());
         if (null != parent) {
             entity.setQuoteContentId(null == parent.getParentId() ? parent.getId() : parent.getQuoteContentId());
         }
         service.save(site.getId(), admin, entity);
+        if (null != checked && checked) {
+            entity = service.check(site.getId(), admin, entity.getId());
+        }
         log.info("save entity success");
         if (CommonUtils.notEmpty(entity.getParentId())) {
             service.updateChilds(entity.getParentId(), 1);
@@ -182,10 +196,24 @@ public class CmsContentAdminController {
             templateComponent.createContentFile(site, entity, category, categoryModel); // 静态化
             log.info("createContentFile success." + (null == entity.getParentId() && null == entity.getQuoteContentId()));
             if (null == entity.getParentId() && null == entity.getQuoteContentId()) {
-                //Set<Serializable> categoryIdsSet = service.updateQuote(entity.getId(), contentParameters);
+                Set<Serializable> categoryIdsSet = service.updateQuote(entity.getId(), contentParameters);
                 if (CommonUtils.notEmpty(contentParameters.getCategoryIds())) {
                     List<CmsCategory> categoryList = categoryService.getEntitys(contentParameters.getCategoryIds().toArray(new Integer[0]));
                     service.saveQuote(entity.getId(), categoryList, category);
+                    if (null != checked && checked) {
+                        if (!categoryIdsSet.isEmpty()) {
+                            categoryList.addAll(categoryService.getEntitys(categoryIdsSet));
+                        }
+                        for (CmsCategory c : categoryList) {
+                            templateComponent.createCategoryFile(site, c, null, null);
+                        }
+                    }
+                }
+            }
+            if (null != checked && checked) {
+                templateComponent.createCategoryFile(site, category, null, null);
+                if (null != parent) {
+                    publish(site, parent, admin);
                 }
             }
             ret.put("status", "0");
@@ -197,6 +225,73 @@ public class CmsContentAdminController {
         log.info("ret=" + JsonUtils.getString(ret));
         return JsonUtils.getString(ret);
     }
+
+    /**
+     * @param file
+     * @param request
+     * @return view name
+     */
+    @RequestMapping(value = "manualUpload", method = RequestMethod.POST)
+    @ResponseBody
+    public String manualUpload(ManualSaveContent params, MultipartFile file, HttpServletRequest request) {
+        Map<String, String> result = new HashMap<>();
+        log.info("params=" + JsonUtils.getString(params));
+        if (!CmsContentAdminController.TOKEN.equals(params.getToken())) {
+            log.info("token valid fail." + params.getToken());
+            result.put("status", "-2");
+            return JsonUtils.getString(result);
+        }
+
+        result.put("status", "-1");
+        SysSite site = siteService.getEntity(params.getSiteId());
+        SysUser user = sysUserService.getEntity(params.getUserId());
+        boolean locked = lockComponent.isLocked(site.getId(), LockComponent.ITEM_TYPE_FILEUPLOAD, String.valueOf(user.getId()),
+                null);
+        if (locked) {
+            lockComponent.lock(site.getId(), LockComponent.ITEM_TYPE_FILEUPLOAD, String.valueOf(user.getId()), null, true);
+            return JsonUtils.getString(result);
+        }
+        if (null != file && !file.isEmpty()) {
+            String originalName = file.getOriginalFilename();
+            String suffix = CmsFileUtils.getSuffix(originalName);
+            log.info("originalName=" + originalName + ", suffix=" + suffix);
+            if (ArrayUtils.contains(siteConfigComponent.getSafeSuffix(site), suffix)) {
+                String fileName = CmsFileUtils.getUploadFileName(suffix);
+                String filepath = siteComponent.getWebFilePath(site.getId(), fileName);
+                try {
+                    CmsFileUtils.upload(file, filepath);
+                    if (CmsFileUtils.isSafe(filepath, suffix)) {
+                        lockComponent.lock(site.getId(), LockComponent.ITEM_TYPE_FILEUPLOAD, String.valueOf(user.getId()), null,
+                                true);
+                        result.put("status", "0");
+                        result.put("fileName", fileName);
+                        String fileType = CmsFileUtils.getFileType(suffix);
+                        result.put("fileType", fileType);
+                        result.put("fileSize", file.getSize() + "");
+                        FileSize fileSize = CmsFileUtils.getFileSize(filepath, suffix);
+                        logUploadService.save(new LogUpload(site.getId(), user.getId(), LogLoginService.CHANNEL_WEB, originalName,
+                                fileType, file.getSize(), fileSize.getWidth(), fileSize.getHeight(),
+                                RequestUtils.getIpAddress(request), CommonUtils.getDate(), fileName));
+                    } else {
+                        result.put("error", LanguagesUtils.getMessage(CommonConstants.applicationContext, request.getLocale(),
+                                "verify.custom.file.unsafe"));
+                    }
+                } catch (IllegalStateException | IOException e) {
+                    log.error(e.getMessage(), e);
+                    result.put("error", e.getMessage());
+                }
+            } else {
+                result.put("error", LanguagesUtils.getMessage(CommonConstants.applicationContext, request.getLocale(),
+                        "verify.custom.fileType"));
+            }
+        } else {
+            result.put("error",
+                    LanguagesUtils.getMessage(CommonConstants.applicationContext, request.getLocale(), "verify.notEmpty.file"));
+        }
+        log.info("uploadFile result=" + result);
+        return JsonUtils.getString(result);
+    }
+
 
     /**
      * 保存内容

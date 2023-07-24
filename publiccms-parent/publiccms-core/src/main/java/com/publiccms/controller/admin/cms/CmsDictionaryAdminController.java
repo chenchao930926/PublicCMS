@@ -79,6 +79,7 @@ public class CmsDictionaryAdminController {
     @Csrf
     public String save(@RequestAttribute SysSite site, @SessionAttribute SysUser admin, CmsDictionary entity, String oldId,
             String parentValue, @ModelAttribute CmsDictionaryParameters dictionaryParameters, HttpServletRequest request) {
+        log.info("entity=" + JsonUtils.getString(entity) + ", parentValue=" + parentValue + ", oldId=" + oldId + ", dataList=" + JsonUtils.getString(dictionaryParameters));
         if (null != entity && null != entity.getId()) {
             entity.getId().setSiteId(site.getId());
             if (CommonUtils.notEmpty(parentValue)) {

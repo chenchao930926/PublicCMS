@@ -24,6 +24,7 @@ public class ManualSaveContent implements Serializable {
     private String categoryName;
     private String source;
     private String sourceUrl;
+    private Boolean checked;
     /**
      * cover<p>
      * 封面图
@@ -196,6 +197,14 @@ public class ManualSaveContent implements Serializable {
         this.token = token;
     }
 
+    public Boolean getChecked() {
+        return checked;
+    }
+
+    public void setChecked(Boolean checked) {
+        this.checked = checked;
+    }
+
     @Override
     public String toString() {
         return "MannualSaveContent{" +
@@ -218,6 +227,7 @@ public class ManualSaveContent implements Serializable {
                 ", token='" + token + '\'' +
                 ", publishDate=" + publishDate +
                 ", expiryDate=" + expiryDate +
+                ", checked=" + checked +
                 '}';
     }
 }
