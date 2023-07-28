@@ -1,5 +1,6 @@
 package com.publiccms.entities.req;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
@@ -20,11 +21,13 @@ public class ManualSaveContent implements Serializable {
     private String stype;
     private String wform;
     private String product;
+    @JsonIgnore
     private String text;
     private String categoryName;
     private String source;
     private String sourceUrl;
     private Boolean checked;
+    private Boolean draft;
     /**
      * cover<p>
      * 封面图
@@ -43,6 +46,7 @@ public class ManualSaveContent implements Serializable {
      */
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date expiryDate;
+    @JsonIgnore
     private String token;
 
     public int getCategoryId() {
@@ -189,6 +193,14 @@ public class ManualSaveContent implements Serializable {
         this.expiryDate = expiryDate;
     }
 
+    public Boolean getDraft() {
+        return draft;
+    }
+
+    public void setDraft(Boolean draft) {
+        this.draft = draft;
+    }
+
     public String getToken() {
         return token;
     }
@@ -228,6 +240,7 @@ public class ManualSaveContent implements Serializable {
                 ", publishDate=" + publishDate +
                 ", expiryDate=" + expiryDate +
                 ", checked=" + checked +
+                ", draft=" + draft +
                 '}';
     }
 }

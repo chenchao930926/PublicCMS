@@ -172,7 +172,7 @@ public class CmsContentAdminController {
         CmsCategoryModel categoryModel = categoryModelService.getEntity(new CmsCategoryModelId(entity.getCategoryId(), entity.getModelId()));
         Date now = CommonUtils.getDate();
         Boolean checked = params.getChecked();
-        initContent(entity, site, cmsModel, null, checked, attribute, Boolean.TRUE, now);
+        initContent(entity, site, cmsModel, params.getDraft(), checked, attribute, Boolean.TRUE, now);
         CmsContent parent = service.getEntity(entity.getParentId());
         if (null != parent) {
             entity.setQuoteContentId(null == parent.getParentId() ? parent.getId() : parent.getQuoteContentId());
@@ -312,7 +312,7 @@ public class CmsContentAdminController {
     public String save(@RequestAttribute SysSite site, @SessionAttribute SysUser admin, CmsContent entity,
             CmsContentAttribute attribute, @ModelAttribute CmsContentParameters contentParameters, Boolean draft, Boolean checked,
             HttpServletRequest request, ModelMap model) {
-        log.info("title=" + entity.getTitle());
+        log.info("title=" + entity.getTitle() + ", entityId=" + entity.getId());
         SysDept dept = sysDeptService.getEntity(admin.getDeptId());
         if (ControllerUtils.errorNotEmpty("deptId", admin.getDeptId(), model)
                 || ControllerUtils.errorNotEmpty("deptId", dept, model)
